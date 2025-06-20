@@ -196,15 +196,7 @@ public class IOMixer {
     public func appendSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
         switch readyState {
         case .encoding:
-            switch sampleBuffer.formatDescription?._mediaType {
-            case kCMMediaType_Audio:
-                audioIO.codec.appendSampleBuffer(sampleBuffer)
-            case kCMMediaType_Video:
-                videoIO.codec.formatDescription = sampleBuffer.formatDescription
-                videoIO.codec.appendSampleBuffer(sampleBuffer)
-            default:
-                break
-            }
+          break
         case .decoding:
             switch sampleBuffer.formatDescription?._mediaType {
             case kCMMediaType_Audio:
