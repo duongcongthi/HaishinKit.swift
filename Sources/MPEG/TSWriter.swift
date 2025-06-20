@@ -62,7 +62,7 @@ public class TSWriter: Running {
     private var audioTimestamp: CMTime = .invalid
     private var PCRTimestamp = CMTime.zero
     private var canWriteFor: Bool {
-        guard expectedMedias.isEmpty else {
+        guard !expectedMedias.isEmpty else {
             return true
         }
         if expectedMedias.contains(.audio) && expectedMedias.contains(.video) {
@@ -82,14 +82,14 @@ public class TSWriter: Running {
     }
 
     public func startRunning() {
-        guard isRunning.value else {
+        guard !isRunning.value else {
             return
         }
         isRunning.mutate { $0 = true }
     }
 
     public func stopRunning() {
-        guard !isRunning.value else {
+        guard isRunning.value else {
             return
         }
         audioContinuityCounter = 0
@@ -392,7 +392,7 @@ class TSFileWriter: TSWriter {
     }
 
     override func stopRunning() {
-        guard !isRunning.value else {
+        guard isRunning.value else {
             return
         }
         currentFileURL = nil
