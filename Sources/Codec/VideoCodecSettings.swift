@@ -146,28 +146,27 @@ public struct VideoCodecSettings: Codable {
 
     func options(_ codec: VideoCodec) -> Set<VTSessionOption> {
         let isBaseline = profileLevel.contains("Baseline")
+        print("[VideoCodecSettings] Creating options - profileLevel: \(profileLevel), bitRate: \(bitRate), isBaseline: \(isBaseline)")
         var options = Set<VTSessionOption>([
-            .init(key: .realTime, value: kCFBooleanTrue),
-            .init(key: .profileLevel, value: profileLevel as NSObject),
+            // Chỉ set những options tối thiểu nhất
             .init(key: bitRateMode.key, value: NSNumber(value: bitRate)),
-            // It seemes that VT supports the range 0 to 30.
-            .init(key: .expectedFrameRate, value: NSNumber(value: (codec.expectedFrameRate <= 30) ? codec.expectedFrameRate : 0)),
-            .init(key: .maxKeyFrameIntervalDuration, value: NSNumber(value: maxKeyFrameIntervalDuration)),
-            .init(key: .allowFrameReordering, value: (allowFrameReordering ?? !isBaseline) as NSObject),
-            .init(key: .pixelTransferProperties, value: [
-                "ScalingMode": scalingMode.rawValue
-            ] as NSObject)
+            .init(key: .allowFrameReordering, value: false as NSObject) // Force false
+            // Remove tất cả các options khác để test
         ])
+        print("[VideoCodecSettings] Base options created, count: \(options.count)")
         #if os(macOS)
         if isHardwareEncoderEnabled {
+            print("[VideoCodecSettings] Adding hardware encoder options")
             options.insert(.init(key: .encoderID, value: format.encoderID))
             options.insert(.init(key: .enableHardwareAcceleratedVideoEncoder, value: kCFBooleanTrue))
             options.insert(.init(key: .requireHardwareAcceleratedVideoEncoder, value: kCFBooleanTrue))
         }
         #endif
         if !isBaseline {
+            print("[VideoCodecSettings] Adding CABAC entropy mode")
             options.insert(.init(key: .H264EntropyMode, value: kVTH264EntropyMode_CABAC))
         }
+        print("[VideoCodecSettings] Final options count: \(options.count)")
         return options
     }
 }

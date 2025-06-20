@@ -39,11 +39,8 @@ public class VideoCodec {
         case failedToSetOption(status: OSStatus, option: VTSessionOption)
     }
 
-    /// The videoCodec's attributes value.
-    public static var defaultAttributes: [NSString: AnyObject]? = [
-        kCVPixelBufferIOSurfacePropertiesKey: NSDictionary(),
-        kCVPixelBufferMetalCompatibilityKey: kCFBooleanTrue
-    ]
+    /// The videoCodec's attributes value. 
+    public static var defaultAttributes: [NSString: AnyObject]? = nil // Disable tất cả attributes để test
 
     /// Specifies the settings for a VideoCodec.
     public var settings: VideoCodecSettings = .default {
@@ -73,6 +70,7 @@ public class VideoCodec {
     var needsSync: Atomic<Bool> = .init(true)
     var attributes: [NSString: AnyObject]? {
         guard VideoCodec.defaultAttributes != nil else {
+            print("[VideoCodec] No default attributes")
             return nil
         }
         var attributes: [NSString: AnyObject] = [:]
@@ -81,6 +79,7 @@ public class VideoCodec {
         }
         attributes[kCVPixelBufferWidthKey] = NSNumber(value: settings.videoSize.width)
         attributes[kCVPixelBufferHeightKey] = NSNumber(value: settings.videoSize.height)
+        print("[VideoCodec] Pixel buffer attributes: \(attributes)")
         return attributes
     }
     weak var delegate: (any VideoCodecDelegate)?
@@ -94,20 +93,33 @@ public class VideoCodec {
 
     func appendImageBuffer(_ imageBuffer: CVImageBuffer, presentationTimeStamp: CMTime, duration: CMTime) {
         guard isRunning.value, !(delegate?.videoCodecWillDropFame(self) ?? false) else {
+            print("[VideoCodec] appendImageBuffer skipped - codec not running or frame should be dropped")
             return
         }
+        let pixelFormat = CVPixelBufferGetPixelFormatType(imageBuffer)
+        let width = CVPixelBufferGetWidth(imageBuffer)
+        let height = CVPixelBufferGetHeight(imageBuffer)
+        print("[VideoCodec] Received image buffer - size: \(width)x\(height), format: \(pixelFormat)")
         if invalidateSession {
+            print("[VideoCodec] Creating compression session")
             session = VTSessionMode.compression.makeSession(self)
         }
-        _ = session?.encodeFrame(
+        guard let session = session else {
+            print("[VideoCodec] No compression session available for encoding")
+            return
+        }
+        print("[VideoCodec] Encoding frame with session")
+        _ = session.encodeFrame(
             imageBuffer,
             presentationTimeStamp: presentationTimeStamp,
             duration: duration
         ) { [unowned self] status, _, sampleBuffer in
             guard let sampleBuffer, status == noErr else {
+                print("[VideoCodec] Encode frame failed with status: \(status)")
                 delegate?.videoCodec(self, errorOccurred: .failedToFlame(status: status))
                 return
             }
+            print("[VideoCodec] Successfully encoded frame, setting format description")
             formatDescription = sampleBuffer.formatDescription
             delegate?.videoCodec(self, didOutput: sampleBuffer)
         }
@@ -115,9 +127,12 @@ public class VideoCodec {
 
     func appendSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
         guard isRunning.value else {
+            print("[VideoCodec] appendSampleBuffer skipped - codec not running")
             return
         }
+        print("[VideoCodec] Received sample buffer for processing")
         if invalidateSession {
+            print("[VideoCodec] Creating decompression session")
             session = VTSessionMode.decompression.makeSession(self)
             needsSync.mutate { $0 = true }
         }
@@ -126,9 +141,11 @@ public class VideoCodec {
         }
         _ = session?.decodeFrame(sampleBuffer) { [unowned self] status, _, imageBuffer, presentationTimeStamp, duration in
             guard let imageBuffer, status == noErr else {
+                print("[VideoCodec] Decode frame failed with status: \(status)")
                 self.delegate?.videoCodec(self, errorOccurred: .failedToFlame(status: status))
                 return
             }
+            print("[VideoCodec] Successfully decoded frame")
             var timingInfo = CMSampleTimingInfo(
                 duration: duration,
                 presentationTimeStamp: presentationTimeStamp,
@@ -141,6 +158,7 @@ public class VideoCodec {
                 formatDescriptionOut: &videoFormatDescription
             )
             guard status == noErr else {
+                print("[VideoCodec] Create format description failed with status: \(status)")
                 delegate?.videoCodec(self, errorOccurred: .failedToFlame(status: status))
                 return
             }
@@ -156,9 +174,11 @@ public class VideoCodec {
                 sampleBufferOut: &sampleBuffer
             )
             guard let buffer = sampleBuffer, status == noErr else {
+                print("[VideoCodec] Create sample buffer failed with status: \(status)")
                 delegate?.videoCodec(self, errorOccurred: .failedToFlame(status: status))
                 return
             }
+            print("[VideoCodec] Outputting decoded sample buffer")
             delegate?.videoCodec(self, didOutput: buffer)
         }
     }

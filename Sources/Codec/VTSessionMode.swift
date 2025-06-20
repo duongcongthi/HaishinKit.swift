@@ -8,6 +8,7 @@ enum VTSessionMode {
     func makeSession(_ videoCodec: VideoCodec) -> (any VTSessionConvertible)? {
         switch self {
         case .compression:
+            print("[VTSessionMode] Creating compression session - size: \(videoCodec.settings.videoSize), codecType: \(videoCodec.settings.format.codecType)")
             var session: VTCompressionSession?
             var status = VTCompressionSessionCreate(
                 allocator: kCFAllocatorDefault,
@@ -22,19 +23,25 @@ enum VTSessionMode {
                 compressionSessionOut: &session
             )
             guard status == noErr, let session else {
+                print("[VTSessionMode] VTCompressionSessionCreate failed with status: \(status)")
                 videoCodec.delegate?.videoCodec(videoCodec, errorOccurred: .failedToCreate(status: status))
                 return nil
             }
+            print("[VTSessionMode] Compression session created successfully, setting options")
             status = session.setOptions(videoCodec.settings.options(videoCodec))
             guard status == noErr else {
+                print("[VTSessionMode] setOptions failed with status: \(status)")
                 videoCodec.delegate?.videoCodec(videoCodec, errorOccurred: .failedToPrepare(status: status))
                 return nil
             }
+            print("[VTSessionMode] Options set successfully, preparing to encode frames")
             status = session.prepareToEncodeFrames()
             guard status == noErr else {
+                print("[VTSessionMode] prepareToEncodeFrames failed with status: \(status)")
                 videoCodec.delegate?.videoCodec(videoCodec, errorOccurred: .failedToPrepare(status: status))
                 return nil
             }
+            print("[VTSessionMode] Compression session fully initialized")
             return session
         case .decompression:
             guard let formatDescription = videoCodec.formatDescription else {

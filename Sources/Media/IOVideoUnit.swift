@@ -225,7 +225,9 @@ final class IOVideoUnit: NSObject, IOUnit {
     }
 
     func appendSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
+        print("[IOVideoUnit] Received sample buffer")
         guard let buffer = sampleBuffer.imageBuffer else {
+            print("[IOVideoUnit] No image buffer in sample buffer")
             return
         }
         var imageBuffer: CVImageBuffer?
@@ -272,6 +274,7 @@ final class IOVideoUnit: NSObject, IOUnit {
         if muted {
             imageBuffer = pixelBuffer
         }
+        print("[IOVideoUnit] Calling codec.appendImageBuffer")
         codec.appendImageBuffer(
             imageBuffer ?? buffer,
             presentationTimeStamp: sampleBuffer.presentationTimeStamp,
@@ -319,12 +322,17 @@ extension IOVideoUnit: IOUnitDecoding {
 extension IOVideoUnit: AVCaptureVideoDataOutputSampleBufferDelegate {
     // MARK: AVCaptureVideoDataOutputSampleBufferDelegate
     func captureOutput(_ captureOutput: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        print("[IOVideoUnit] captureOutput received sample buffer")
         if capture.output == captureOutput {
+            print("[IOVideoUnit] Sample from main capture, checking useSampleBuffer")
             guard mixer?.useSampleBuffer(sampleBuffer: sampleBuffer, mediaType: AVMediaType.video) == true else {
+                print("[IOVideoUnit] useSampleBuffer returned false, dropping sample")
                 return
             }
+            print("[IOVideoUnit] Forwarding to appendSampleBuffer")
             appendSampleBuffer(sampleBuffer)
         } else if multiCamCapture.output == captureOutput {
+            print("[IOVideoUnit] Sample from multiCam capture")
             multiCamSampleBuffer = sampleBuffer
         }
     }

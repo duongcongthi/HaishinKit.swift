@@ -213,18 +213,25 @@ public class IOMixer {
     }
 
     func useSampleBuffer(sampleBuffer: CMSampleBuffer, mediaType: AVMediaType) -> Bool {
+        let result: Bool
         switch mediaSync {
         case .video:
             if mediaType == .audio {
-                return !videoTimeStamp.seconds.isZero && videoTimeStamp.seconds <= sampleBuffer.presentationTimeStamp.seconds
+                result = !videoTimeStamp.seconds.isZero && videoTimeStamp.seconds <= sampleBuffer.presentationTimeStamp.seconds
+                print("[IOMixer] useSampleBuffer audio - videoTimeStamp: \(videoTimeStamp.seconds), audio timestamp: \(sampleBuffer.presentationTimeStamp.seconds), result: \(result)")
+            } else {
+                if videoTimeStamp == CMTime.zero {
+                    videoTimeStamp = sampleBuffer.presentationTimeStamp
+                    print("[IOMixer] useSampleBuffer video - setting initial videoTimeStamp: \(videoTimeStamp.seconds)")
+                }
+                result = true
+                print("[IOMixer] useSampleBuffer video - allowing, timestamp: \(sampleBuffer.presentationTimeStamp.seconds)")
             }
-            if videoTimeStamp == CMTime.zero {
-                videoTimeStamp = sampleBuffer.presentationTimeStamp
-            }
-            return true
         default:
-            return true
+            result = true
+            print("[IOMixer] useSampleBuffer \(mediaType) - passthrough mode, allowing")
         }
+        return result
     }
 
     #if os(iOS)
@@ -260,11 +267,14 @@ extension IOMixer: IOUnitEncoding {
     /// Starts encoding for video and audio data.
     public func startEncoding(_ delegate: any AVCodecDelegate) {
         guard readyState == .standby else {
+            print("[IOMixer] startEncoding skipped - not in standby state, current: \(readyState)")
             return
         }
+        print("[IOMixer] Starting encoding with delegate: \(type(of: delegate))")
         readyState = .encoding
         videoIO.startEncoding(delegate)
         audioIO.startEncoding(delegate)
+        print("[IOMixer] Encoding started for both video and audio")
     }
 
     /// Stop encoding.

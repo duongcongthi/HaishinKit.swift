@@ -19,15 +19,19 @@ open class HTTPStream: NetStream {
     open func publish(_ name: String?) {
         lockQueue.async {
             if name == nil {
+                print("[HTTPStream] Stopping publish")
                 self.name = name
                 self.mixer.stopEncoding()
                 self.tsWriter.stopRunning()
                 return
             }
+            print("[HTTPStream] Starting publish with name: \(name!)")
+            print("[HTTPStream] Expected medias: \(self.expectedMedias)")
             self.name = name
             self.mixer.startEncoding(self.tsWriter)
             self.mixer.startRunning()
             self.tsWriter.startRunning()
+            print("[HTTPStream] Publish started - mixer encoding, mixer running, tsWriter running")
         }
     }
 

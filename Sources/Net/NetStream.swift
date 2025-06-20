@@ -250,14 +250,17 @@ open class NetStream: NSObject {
     open func appendSampleBuffer(_ sampleBuffer: CMSampleBuffer, options: [NSObject: AnyObject]? = nil) {
         switch sampleBuffer.formatDescription?._mediaType {
         case kCMMediaType_Audio:
+            print("[NetStream] Appending audio sample to mixer.audioIO")
             mixer.audioIO.lockQueue.async {
                 self.mixer.audioIO.appendSampleBuffer(sampleBuffer)
             }
         case kCMMediaType_Video:
+            print("[NetStream] Appending video sample to mixer.videoIO")
             mixer.videoIO.lockQueue.async {
                 self.mixer.videoIO.appendSampleBuffer(sampleBuffer)
             }
         default:
+            print("[NetStream] Unknown media type: \(String(describing: sampleBuffer.formatDescription?._mediaType))")
             break
         }
     }

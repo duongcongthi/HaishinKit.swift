@@ -33,7 +33,11 @@ public class TSWriter: Running {
     /// This instance is running to process(true) or not(false).
     public internal(set) var isRunning: Atomic<Bool> = .init(false)
     /// The exptected medias = [.video, .audio].
-    public var expectedMedias: Set<AVMediaType> = []
+    public var expectedMedias: Set<AVMediaType> = [] {
+        didSet {
+            print("[TSWriter] expectedMedias set to: \(expectedMedias)")
+        }
+    }
 
     var audioContinuityCounter: UInt8 = 0
     var videoContinuityCounter: UInt8 = 0
@@ -76,6 +80,30 @@ public class TSWriter: Running {
         }
         return false
     }
+    
+    // Kiểm tra riêng cho từng PID/media type
+    private func canWriteFor(PID: UInt16) -> Bool {
+        guard !expectedMedias.isEmpty else {
+            return true
+        }
+        
+        switch PID {
+        case TSWriter.defaultAudioPID:
+            let canWrite = !expectedMedias.contains(.audio) || audioConfig != nil
+            if !canWrite {
+                print("[TSWriter] Audio sample dropped - audioConfig not ready")
+            }
+            return canWrite
+        case TSWriter.defaultVideoPID:
+            let canWrite = !expectedMedias.contains(.video) || videoConfig != nil
+            if !canWrite {
+                print("[TSWriter] Video sample dropped - videoConfig not ready")
+            }
+            return canWrite
+        default:
+            return true
+        }
+    }
 
     public init(segmentDuration: Double = TSWriter.defaultSegmentDuration) {
         self.segmentDuration = segmentDuration
@@ -83,9 +111,11 @@ public class TSWriter: Running {
 
     public func startRunning() {
         guard !isRunning.value else {
+            print("[TSWriter] Already running, skipping start")
             return
         }
         isRunning.mutate { $0 = true }
+        print("[TSWriter] Started running")
     }
 
     public func stopRunning() {
@@ -108,7 +138,8 @@ public class TSWriter: Running {
 
     // swiftlint:disable:next function_parameter_count
     final func writeSampleBuffer(_ PID: UInt16, streamID: UInt8, bytes: UnsafePointer<UInt8>?, count: UInt32, presentationTimeStamp: CMTime, decodeTimeStamp: CMTime, randomAccessIndicator: Bool) {
-        guard canWriteFor else {
+        // Kiểm tra riêng cho từng media type thay vì kiểm tra chung
+        guard canWriteFor(PID: PID) else {
             return
         }
 
@@ -163,6 +194,7 @@ public class TSWriter: Running {
             bytes.append(packet.data)
         }
 
+        print("[TSWriter] Writing \(bytes.count) bytes for PID \(PID)")
         write(bytes)
     }
 
@@ -229,12 +261,14 @@ extension TSWriter: AudioCodecDelegate {
         PMT.elementaryStreamSpecificData.append(data)
         audioContinuityCounter = 0
         audioConfig = AudioSpecificConfig(formatDescription: outputFormat.formatDescription)
+        print("[TSWriter] Audio config ready!")
     }
 
     public func audioCodec(_ codec: AudioCodec, didOutput audioBuffer: AVAudioBuffer, presentationTimeStamp: CMTime) {
         guard let audioBuffer = audioBuffer as? AVAudioCompressedBuffer else {
             return
         }
+        print("[TSWriter] Writing audio sample, size: \(audioBuffer.byteLength)")
         writeSampleBuffer(
             TSWriter.defaultAudioPID,
             streamID: 192,
@@ -262,6 +296,7 @@ extension TSWriter: VideoCodecDelegate {
         PMT.elementaryStreamSpecificData.append(data)
         videoContinuityCounter = 0
         videoConfig = AVCDecoderConfigurationRecord(data: avcC)
+        print("[TSWriter] Video config ready!")
     }
 
     public func videoCodec(_ codec: VideoCodec, didOutput sampleBuffer: CMSampleBuffer) {
@@ -276,6 +311,7 @@ extension TSWriter: VideoCodecDelegate {
         guard let bytes = buffer else {
             return
         }
+        print("[TSWriter] Writing video sample, size: \(length)")
         writeSampleBuffer(
             TSWriter.defaultVideoPID,
             streamID: 224,

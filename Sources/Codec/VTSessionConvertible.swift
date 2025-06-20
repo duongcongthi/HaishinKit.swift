@@ -18,10 +18,14 @@ extension VTSessionConvertible where Self: VTSession {
 
     func setOptions(_ options: Set<VTSessionOption>) -> OSStatus {
         var properties: [AnyHashable: AnyObject] = [:]
+        print("[VTSession] Setting \(options.count) options:")
         for option in options {
+            print("[VTSession] - \(option.key.CFString): \(option.value)")
             properties[option.key.CFString] = option.value
         }
-        return VTSessionSetProperties(self, propertyDictionary: properties as CFDictionary)
+        let status = VTSessionSetProperties(self, propertyDictionary: properties as CFDictionary)
+        print("[VTSession] VTSessionSetProperties result: \(status)")
+        return status
     }
 
     func copySupportedPropertyDictionary() -> [AnyHashable: Any] {
