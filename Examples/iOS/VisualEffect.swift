@@ -19,7 +19,11 @@ final class PronamaEffect: VideoEffect {
     }
     var pronama: CIImage?
 
-    func execute(_ image: CIImage) -> CIImage {
+    override init() {
+        super.init()
+    }
+
+    override func execute(_ image: CIImage, info: CMSampleBuffer?) -> CIImage {
         guard let filter: CIFilter = filter else {
             return image
         }
@@ -33,7 +37,7 @@ final class PronamaEffect: VideoEffect {
 final class MonochromeEffect: VideoEffect {
     let filter: CIFilter? = CIFilter(name: "CIColorMonochrome")
 
-    func execute(_ image: CIImage) -> CIImage {
+    override func execute(_ image: CIImage, info: CMSampleBuffer?) -> CIImage {
         guard let filter: CIFilter = filter else {
             return image
         }

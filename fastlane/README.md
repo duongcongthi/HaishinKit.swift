@@ -19,7 +19,7 @@ For _fastlane_ installation instructions, see [Installing _fastlane_](https://do
 [bundle exec] fastlane review
 ```
 
-Review PullRequest.
+[CI] Review PullRequest.
 
 ### document
 

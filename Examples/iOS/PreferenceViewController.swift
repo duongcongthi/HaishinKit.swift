@@ -6,8 +6,8 @@ final class PreferenceViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        urlField?.text = Preference.default.uri
-        streamNameField?.text = Preference.default.streamName
+        urlField?.text = Preference.defaultInstance.uri
+        streamNameField?.text = Preference.defaultInstance.streamName
     }
 
     @IBAction func on(open: UIButton) {
@@ -20,10 +20,10 @@ final class PreferenceViewController: UIViewController {
 extension PreferenceViewController: UITextFieldDelegate {
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
         if urlField == textField {
-            Preference.default.uri = textField.text
+            Preference.defaultInstance.uri = textField.text
         }
         if streamNameField == textField {
-            Preference.default.streamName = textField.text
+            Preference.defaultInstance.streamName = textField.text
         }
         textField.resignFirstResponder()
         return true

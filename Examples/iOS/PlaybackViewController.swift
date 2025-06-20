@@ -5,25 +5,26 @@ import HaishinKit
 import UIKit
 
 final class PlaybackViewController: UIViewController {
+    private static let maxRetryCount: Int = 5
+
     @IBOutlet private weak var playbackButton: UIButton!
-    private let netStreamSwitcher: HKStreamSwitcher = .init()
-    private let audioPlayer = AudioPlayer(audioEngine: AVAudioEngine())
+    private var rtmpConnection = RTMPConnection()
+    private var rtmpStream: RTMPStream!
+    private var retryCount: Int = 0
     private var pictureInPictureController: AVPictureInPictureController?
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        rtmpStream = RTMPStream(connection: rtmpConnection)
+        rtmpStream.delegate = self
+    }
 
     override func viewWillAppear(_ animated: Bool) {
         logger.info("viewWillAppear")
         super.viewWillAppear(animated)
-        if #available(iOS 15.0, *), let layer = view.layer as? AVSampleBufferDisplayLayer, pictureInPictureController == nil {
+        (view as? (any NetStreamDrawable))?.attachStream(rtmpStream)
+        if #available(iOS 15.0, *), let layer = view.layer as? AVSampleBufferDisplayLayer {
             pictureInPictureController = AVPictureInPictureController(contentSource: .init(sampleBufferDisplayLayer: layer, playbackDelegate: self))
-        }
-        Task {
-            await netStreamSwitcher.setPreference(Preference.default)
-            if let stream = await netStreamSwitcher.stream {
-                if let view = view as? (any HKStreamOutput) {
-                    await stream.addOutput(view)
-                }
-            }
-            await netStreamSwitcher.stream?.attachAudioPlayer(audioPlayer)
         }
     }
 
@@ -37,17 +38,56 @@ final class PlaybackViewController: UIViewController {
     }
 
     @IBAction func didPlaybackButtonTap(_ button: UIButton) {
-        Task {
-            if button.isSelected {
-                UIApplication.shared.isIdleTimerDisabled = false
-                await netStreamSwitcher.close()
-                button.setTitle("●", for: [])
-            } else {
-                UIApplication.shared.isIdleTimerDisabled = true
-                await netStreamSwitcher.open(.playback)
-                button.setTitle("■", for: [])
+        if button.isSelected {
+            UIApplication.shared.isIdleTimerDisabled = false
+            rtmpConnection.close()
+            rtmpConnection.removeEventListener(.rtmpStatus, selector: #selector(rtmpStatusHandler), observer: self)
+            rtmpConnection.removeEventListener(.ioError, selector: #selector(rtmpErrorHandler), observer: self)
+            button.setTitle("●", for: [])
+        } else {
+            UIApplication.shared.isIdleTimerDisabled = true
+            rtmpConnection.addEventListener(.rtmpStatus, selector: #selector(rtmpStatusHandler), observer: self)
+            rtmpConnection.addEventListener(.ioError, selector: #selector(rtmpErrorHandler), observer: self)
+            rtmpConnection.connect(Preference.defaultInstance.uri!)
+            button.setTitle("■", for: [])
+        }
+        button.isSelected.toggle()
+    }
+
+    @objc
+    private func rtmpStatusHandler(_ notification: Notification) {
+        let e = Event.from(notification)
+        guard let data = e.data as? ASObject, let code = data["code"] as? String else {
+            return
+        }
+        logger.info(code)
+        switch code {
+        case RTMPConnection.Code.connectSuccess.rawValue:
+            retryCount = 0
+            rtmpStream.play(Preference.defaultInstance.streamName!)
+        case RTMPConnection.Code.connectFailed.rawValue, RTMPConnection.Code.connectClosed.rawValue:
+            guard retryCount <= PlaybackViewController.maxRetryCount else {
+                return
             }
-            button.isSelected.toggle()
+            Thread.sleep(forTimeInterval: pow(2.0, Double(retryCount)))
+            rtmpConnection.connect(Preference.defaultInstance.uri!)
+            retryCount += 1
+        default:
+            break
+        }
+    }
+
+    @objc
+    private func rtmpErrorHandler(_ notification: Notification) {
+        logger.error(notification)
+        rtmpConnection.connect(Preference.defaultInstance.uri!)
+    }
+
+    @objc
+    private func didEnterBackground(_ notification: Notification) {
+        logger.info(notification)
+        if pictureInPictureController?.isPictureInPictureActive == false {
+            rtmpStream.receiveVideo = false
         }
     }
 
@@ -55,44 +95,56 @@ final class PlaybackViewController: UIViewController {
     private func didBecomeActive(_ notification: Notification) {
         logger.info(notification)
         if pictureInPictureController?.isPictureInPictureActive == false {
-            Task {
-                if let stream = await netStreamSwitcher.stream as? RTMPStream {
-                    _ = try? await stream.receiveVideo(true)
-                }
-            }
-        }
-    }
-
-    @objc
-    private func didEnterBackground(_ notification: Notification) {
-        logger.info(notification)
-        if pictureInPictureController?.isPictureInPictureActive == false {
-            Task {
-                if let stream = await netStreamSwitcher.stream as? RTMPStream {
-                    _ = try? await stream.receiveVideo(false)
-                }
-            }
+            rtmpStream.receiveVideo = true
         }
     }
 }
 
 extension PlaybackViewController: AVPictureInPictureSampleBufferPlaybackDelegate {
     // MARK: AVPictureInPictureControllerDelegate
-    nonisolated func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, setPlaying playing: Bool) {
+    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, setPlaying playing: Bool) {
     }
 
-    nonisolated func pictureInPictureControllerTimeRangeForPlayback(_ pictureInPictureController: AVPictureInPictureController) -> CMTimeRange {
+    func pictureInPictureControllerTimeRangeForPlayback(_ pictureInPictureController: AVPictureInPictureController) -> CMTimeRange {
         return CMTimeRange(start: .zero, duration: .positiveInfinity)
     }
 
-    nonisolated func pictureInPictureControllerIsPlaybackPaused(_ pictureInPictureController: AVPictureInPictureController) -> Bool {
+    func pictureInPictureControllerIsPlaybackPaused(_ pictureInPictureController: AVPictureInPictureController) -> Bool {
         return false
     }
 
-    nonisolated func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, didTransitionToRenderSize newRenderSize: CMVideoDimensions) {
+    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, didTransitionToRenderSize newRenderSize: CMVideoDimensions) {
     }
 
-    nonisolated func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, skipByInterval skipInterval: CMTime, completion completionHandler: @escaping () -> Void) {
+    func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, skipByInterval skipInterval: CMTime, completion completionHandler: @escaping () -> Void) {
         completionHandler()
+    }
+}
+
+extension PlaybackViewController: NetStreamDelegate {
+    // MARK: NetStreamDelegate
+    func stream(_ stream: NetStream, didOutput audio: AVAudioBuffer, presentationTimeStamp: CMTime) {
+    }
+
+    func stream(_ stream: NetStream, didOutput video: CMSampleBuffer) {
+    }
+
+    func stream(_ stream: NetStream, sessionWasInterrupted session: AVCaptureSession, reason: AVCaptureSession.InterruptionReason?) {
+    }
+
+    func stream(_ stream: NetStream, sessionInterruptionEnded session: AVCaptureSession) {
+    }
+
+    func stream(_ stream: NetStream, videoCodecErrorOccurred error: VideoCodec.Error) {
+    }
+
+    func stream(_ stream: NetStream, audioCodecErrorOccurred error: HaishinKit.AudioCodec.Error) {
+    }
+
+    func streamWillDropFrame(_ stream: NetStream) -> Bool {
+        return false
+    }
+
+    func streamDidOpen(_ stream: NetStream) {
     }
 }

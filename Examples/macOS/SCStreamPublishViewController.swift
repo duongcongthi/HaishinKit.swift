@@ -2,61 +2,54 @@ import AppKit
 import Foundation
 import HaishinKit
 #if canImport(ScreenCaptureKit)
-@preconcurrency import ScreenCaptureKit
+import ScreenCaptureKit
 #endif
 
 class SCStreamPublishViewController: NSViewController {
     @IBOutlet private weak var cameraPopUpButton: NSPopUpButton!
     @IBOutlet private weak var urlField: NSTextField!
-    @IBOutlet private weak var mthkView: MTHKView!
-    private let netStreamSwitcher: HKStreamSwitcher = .init()
-    private let lockQueue = DispatchQueue(label: "SCStreamPublishViewController.lock")
-    private var _scstream: Any?
+
+    private var currentStream: NetStream?
+    private var rtmpConnection = RTMPConnection()
+    private lazy var rtmpStream: RTMPStream = {
+        let rtmpStream = RTMPStream(connection: rtmpConnection)
+        return rtmpStream
+    }()
+
+    private var _stream: Any?
 
     @available(macOS 12.3, *)
-    private var scstream: SCStream? {
+    private var stream: SCStream? {
         get {
-            _scstream as? SCStream
+            _stream as? SCStream
         }
         set {
-            _scstream = newValue
-            /*
-             Task {
-             try? newValue?.addStreamOutput(stream, type: .screen, sampleHandlerQueue: lockQueue)
-             if #available(macOS 13.0, *) {
-             try? newValue?.addStreamOutput(stream, type: .audio, sampleHandlerQueue: lockQueue)
-             }
-             try await newValue?.startCapture()
-             }
-             */
+            _stream = newValue
+            Task {
+                try? newValue?.addStreamOutput(rtmpStream, type: .screen, sampleHandlerQueue: DispatchQueue.main)
+                if #available(macOS 13.0, *) {
+                    try? newValue?.addStreamOutput(rtmpStream, type: .audio, sampleHandlerQueue: DispatchQueue.main)
+                }
+                try? await newValue?.startCapture()
+            }
         }
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        urlField.stringValue = Preference.default.uri ?? ""
-        Task {
-            await netStreamSwitcher.setPreference(Preference.default)
-            let stream = await netStreamSwitcher.stream
-            await stream?.addOutput(mthkView!)
-            try await SCShareableContent.current.windows.forEach {
-                cameraPopUpButton.addItem(withTitle: $0.owningApplication?.applicationName ?? "")
+        urlField.stringValue = Preference.defaultInstance.uri ?? ""
+        if #available(macOS 12.3, *) {
+            Task {
+                try await SCShareableContent.current.windows.forEach {
+                    cameraPopUpButton.addItem(withTitle: $0.owningApplication?.applicationName ?? "")
+                }
             }
         }
     }
 
-    @IBAction private func publishOrStop(_ sender: NSButton) {
-        Task {
-            // Publish
-            if sender.title == "Publish" {
-                sender.title = "Stop"
-                await netStreamSwitcher.open(.ingest)
-            } else {
-                // Stop
-                sender.title = "Publish"
-                await netStreamSwitcher.close()
-            }
-        }
+    override func viewWillAppear() {
+        super.viewWillAppear()
+        currentStream = rtmpStream
     }
 
     @IBAction private func selectCamera(_ sender: AnyObject) {
@@ -65,21 +58,45 @@ class SCStreamPublishViewController: NSViewController {
                 guard let window = try? await SCShareableContent.current.windows.first(where: { $0.owningApplication?.applicationName == cameraPopUpButton.title }) else {
                     return
                 }
-                print(window)
                 let filter = SCContentFilter(desktopIndependentWindow: window)
                 let configuration = SCStreamConfiguration()
                 configuration.width = Int(window.frame.width)
                 configuration.height = Int(window.frame.height)
                 configuration.showsCursor = true
-                self.scstream = SCStream(filter: filter, configuration: configuration, delegate: self)
+                self.stream = SCStream(filter: filter, configuration: configuration, delegate: nil)
             }
         }
     }
-}
 
-extension SCStreamPublishViewController: SCStreamDelegate {
-    // MARK: SCStreamDelegate
-    nonisolated func stream(_ stream: SCStream, didStopWithError error: any Error) {
-        print(error)
+    @IBAction private func publishOrStop(_ sender: NSButton) {
+        // Publish
+        if sender.title == "Publish" {
+            sender.title = "Stop"
+            rtmpConnection.addEventListener(.rtmpStatus, selector: #selector(rtmpStatusHandler), observer: self)
+            rtmpConnection.connect(Preference.defaultInstance.uri ?? "")
+            return
+        }
+        // Stop
+        sender.title = "Publish"
+        rtmpConnection.removeEventListener(.rtmpStatus, selector: #selector(rtmpStatusHandler), observer: self)
+        rtmpConnection.close()
+        return
+    }
+
+    @objc
+    private func rtmpStatusHandler(_ notification: Notification) {
+        let e = Event.from(notification)
+        guard
+            let data: ASObject = e.data as? ASObject,
+            let code: String = data["code"] as? String else {
+            return
+        }
+        logger.info(data)
+        switch code {
+        case RTMPConnection.Code.connectSuccess.rawValue:
+            rtmpStream.publish(Preference.defaultInstance.streamName)
+        default:
+            break
+        }
     }
 }

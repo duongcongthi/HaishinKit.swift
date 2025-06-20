@@ -1,75 +1,49 @@
-// swift-tools-version:6.0
+// swift-tools-version:5.9
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 import PackageDescription
-
-#if swift(<6)
-let swiftSettings: [SwiftSetting] = [
-    .enableExperimentalFeature("ExistentialAny"),
-    .enableExperimentalFeature("StrictConcurrency")
-]
-#else
-let swiftSettings: [SwiftSetting] = [
-    .enableUpcomingFeature("ExistentialAny")
-]
-#endif
 
 let package = Package(
     name: "HaishinKit",
     platforms: [
-        .iOS(.v13),
-        .tvOS(.v13),
-        .visionOS(.v1),
-        .macOS(.v10_15),
+        .iOS(.v12),
+        .tvOS(.v12),
+        .macOS(.v10_13),
         .macCatalyst(.v14)
     ],
     products: [
         .library(name: "HaishinKit", targets: ["HaishinKit"]),
-        .library(name: "SRTHaishinKit", targets: ["SRTHaishinKit"]),
-        .library(name: "MoQTHaishinKit", targets: ["MoQTHaishinKit"])
+        .library(name: "SRTHaishinKit", targets: ["SRTHaishinKit"])
     ],
     dependencies: [
-        .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.4.3"),
-        .package(url: "https://github.com/shogo4405/Logboard.git", "2.5.0"..<"2.6.0")
+        .package(url: "https://github.com/shogo4405/Logboard.git", "2.4.1"..<"2.5.0"),
+        .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.3.0")
     ],
     targets: [
         .binaryTarget(
             name: "libsrt",
-            url: "https://github.com/HaishinKit/libsrt-xcframework/releases/download/v1.5.4/libsrt.xcframework.zip",
-            checksum: "76879e2802e45ce043f52871a0a6764d57f833bdb729f2ba6663f4e31d658c4a"
+            path: "Vendor/SRT/libsrt.xcframework"
         ),
-        .target(
-            name: "HaishinKit",
-            dependencies: ["Logboard"],
-            path: "HaishinKit/Sources",
-            swiftSettings: swiftSettings
-        ),
-        .target(
-            name: "SRTHaishinKit",
-            dependencies: ["libsrt", "HaishinKit"],
-            path: "SRTHaishinKit/Sources",
-            swiftSettings: swiftSettings
-        ),
-        .target(
-            name: "MoQTHaishinKit",
-            dependencies: ["HaishinKit"],
-            path: "MoQTHaishinKit/Sources",
-            swiftSettings: swiftSettings
-        ),
-        .testTarget(
-            name: "HaishinKitTests",
-            dependencies: ["HaishinKit"],
-            path: "HaishinKit/Tests",
-            resources: [
-                .process("Asset")
-            ],
-            swiftSettings: swiftSettings
-        ),
-        .testTarget(
-            name: "SRTHaishinKitTests",
-            dependencies: ["SRTHaishinKit"],
-            path: "SRTHaishinKit/Tests",
-            swiftSettings: swiftSettings
+        .target(name: "SwiftPMSupport"),
+        .target(name: "HaishinKit",
+                dependencies: ["Logboard", "SwiftPMSupport"],
+                path: "Sources",
+                sources: [
+                    "Codec",
+                    "Extension",
+                    "FLV",
+                    "HTTP",
+                    "Media",
+                    "MPEG",
+                    "Net",
+                    "RTMP",
+                    "Util"
+                ]),
+        .target(name: "SRTHaishinKit",
+                dependencies: [
+                    "libsrt",
+                    "HaishinKit"
+                ],
+                path: "SRTHaishinKit"
         )
-    ],
-    swiftLanguageModes: [.v6, .v5]
+    ]
 )
